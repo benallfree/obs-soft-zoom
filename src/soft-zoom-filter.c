@@ -2,6 +2,12 @@
 #include <util/platform.h>
 #include "zoom-outline.h"
 
+#define ANCHOR_CENTER 0
+#define ANCHOR_UPPER_LEFT 1
+#define ANCHOR_UPPER_RIGHT 2
+#define ANCHOR_LOWER_LEFT 3
+#define ANCHOR_LOWER_RIGHT 4
+
 struct soft_zoom_filter {
 	obs_source_t *context;
 
@@ -14,6 +20,8 @@ struct soft_zoom_filter {
 	int ease_ms;
 	int outline_thickness;
 	int dim_opacity;
+	int anchor_mode;
+	bool follow_mouse;
 
 	obs_hotkey_id toggle_hotkey;
 	bool hotkey_registered;
@@ -95,8 +103,32 @@ static void compute_crop(struct soft_zoom_filter *f, float zoom)
 		left = 0.5f - crop_w * 0.5f;
 		top = 0.5f - crop_h * 0.5f;
 	} else {
-		left = f->anchor_x;
-		top = f->anchor_y;
+		const float px = f->anchor_x;
+		const float py = f->anchor_y;
+
+		switch (f->anchor_mode) {
+		case ANCHOR_UPPER_LEFT:
+			left = px;
+			top = py;
+			break;
+		case ANCHOR_UPPER_RIGHT:
+			left = px - crop_w;
+			top = py;
+			break;
+		case ANCHOR_LOWER_LEFT:
+			left = px;
+			top = py - crop_h;
+			break;
+		case ANCHOR_LOWER_RIGHT:
+			left = px - crop_w;
+			top = py - crop_h;
+			break;
+		case ANCHOR_CENTER:
+		default:
+			left = px - crop_w * 0.5f;
+			top = py - crop_h * 0.5f;
+			break;
+		}
 	}
 
 	if (left < 0.f)
@@ -162,20 +194,25 @@ static void sync_overlay(struct soft_zoom_filter *f, obs_source_t *parent)
 	}
 }
 
-static void lock_center(struct soft_zoom_filter *f, obs_source_t *parent)
+static void refresh_anchor_from_cursor(struct soft_zoom_filter *f, obs_source_t *parent)
 {
+	if (!is_display_capture(parent)) {
+		f->center_fallback = true;
+		return;
+	}
+
 	uint32_t display_id = capture_display_id(parent);
 	bool on_display = false;
 	float cx = 0.5f;
 	float cy = 0.5f;
 
-	f->center_fallback = false;
 	zoom_cursor_normalized_on_display(display_id, &cx, &cy, &on_display);
-	if (!on_display || !is_display_capture(parent)) {
+	if (!on_display) {
 		f->center_fallback = true;
 		return;
 	}
 
+	f->center_fallback = false;
 	f->anchor_x = cx;
 	f->anchor_y = cy;
 }
@@ -202,7 +239,7 @@ static void toggle_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey, bo
 		return;
 
 	if (!f->zoom_active) {
-		lock_center(f, parent);
+		refresh_anchor_from_cursor(f, parent);
 		f->zoom_active = true;
 		start_anim(f, (float)f->zoom_factor);
 	} else {
@@ -221,9 +258,11 @@ static void *soft_zoom_create(obs_data_t *settings, obs_source_t *context)
 	f->context = context;
 	f->toggle_hotkey = OBS_INVALID_HOTKEY_ID;
 	f->zoom_current = 1.f;
-	f->anchor_x = 0.f;
-	f->anchor_y = 0.f;
+	f->anchor_x = 0.5f;
+	f->anchor_y = 0.5f;
 	f->center_fallback = false;
+	f->anchor_mode = ANCHOR_CENTER;
+	f->follow_mouse = true;
 
 	obs_enter_graphics();
 	f->effect = gs_effect_create_from_file(effect_path, NULL);
@@ -267,6 +306,8 @@ static void soft_zoom_update(void *data, obs_data_t *settings)
 	f->ease_ms = (int)obs_data_get_int(settings, "ease_ms");
 	f->outline_thickness = (int)obs_data_get_int(settings, "outline");
 	f->dim_opacity = (int)obs_data_get_int(settings, "dim");
+	f->anchor_mode = (int)obs_data_get_int(settings, "anchor");
+	f->follow_mouse = obs_data_get_bool(settings, "follow_mouse");
 
 	if (f->zoom_active && !f->animating) {
 		obs_source_t *parent = obs_filter_get_parent(f->context);
@@ -281,6 +322,8 @@ static void soft_zoom_defaults(obs_data_t *settings)
 	obs_data_set_default_int(settings, "ease_ms", 250);
 	obs_data_set_default_int(settings, "outline", 3);
 	obs_data_set_default_int(settings, "dim", 0);
+	obs_data_set_default_int(settings, "anchor", ANCHOR_CENTER);
+	obs_data_set_default_bool(settings, "follow_mouse", true);
 }
 
 static obs_properties_t *soft_zoom_properties(void *unused)
@@ -294,9 +337,19 @@ static obs_properties_t *soft_zoom_properties(void *unused)
 	obs_property_list_add_int(zoom, obs_module_text("SoftZoom.Zoom.4x"), 4);
 	obs_property_list_add_int(zoom, obs_module_text("SoftZoom.Zoom.8x"), 8);
 
-	obs_properties_add_int(props, "ease_ms", obs_module_text("SoftZoom.EaseMs"), 0, 2000, 10);
-	obs_properties_add_int(props, "outline", obs_module_text("SoftZoom.OutlineThickness"), 0, 50, 1);
-	obs_properties_add_int(props, "dim", obs_module_text("SoftZoom.DimOpacity"), 0, 100, 1);
+	obs_properties_add_int_slider(props, "ease_ms", obs_module_text("SoftZoom.EaseMs"), 0, 2000, 10);
+	obs_properties_add_int_slider(props, "outline", obs_module_text("SoftZoom.OutlineThickness"), 0, 50, 1);
+	obs_properties_add_int_slider(props, "dim", obs_module_text("SoftZoom.DimOpacity"), 0, 100, 1);
+
+	obs_property_t *anchor = obs_properties_add_list(props, "anchor", obs_module_text("SoftZoom.Anchor"),
+							 OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(anchor, obs_module_text("SoftZoom.Anchor.Center"), ANCHOR_CENTER);
+	obs_property_list_add_int(anchor, obs_module_text("SoftZoom.Anchor.UpperLeft"), ANCHOR_UPPER_LEFT);
+	obs_property_list_add_int(anchor, obs_module_text("SoftZoom.Anchor.UpperRight"), ANCHOR_UPPER_RIGHT);
+	obs_property_list_add_int(anchor, obs_module_text("SoftZoom.Anchor.LowerLeft"), ANCHOR_LOWER_LEFT);
+	obs_property_list_add_int(anchor, obs_module_text("SoftZoom.Anchor.LowerRight"), ANCHOR_LOWER_RIGHT);
+
+	obs_properties_add_bool(props, "follow_mouse", obs_module_text("SoftZoom.FollowMouse"));
 
 	return props;
 }
@@ -333,6 +386,9 @@ static void soft_zoom_tick(void *data, float seconds)
 			f->center_fallback = false;
 		}
 	}
+
+	if (f->zoom_active && f->follow_mouse && parent)
+		refresh_anchor_from_cursor(f, parent);
 
 	compute_crop(f, f->zoom_current);
 
