@@ -2,7 +2,15 @@
 
 macOS OBS filter for display captures: hotkey zoom locked to the cursor, optional on-screen outline and dim (not in the stream).
 
+**Version:** 0.1.0 (OBS Studio 31.1.x, macOS 12+, universal)
+
 ## Install
+
+### From a release
+
+Download the latest `obs-soft-zoom-*-macos-universal.zip` from [GitHub Releases](https://github.com/benallfree/obs-soft-zoom/releases), unzip `obs-soft-zoom.plugin` into `~/Library/Application Support/obs-studio/plugins/`, and restart OBS.
+
+### Build locally
 
 Build with CMake (see [obs-plugintemplate](https://github.com/obsproject/obs-plugintemplate) docs):
 
@@ -16,6 +24,15 @@ Copy `build_macos/rundir/RelWithDebInfo/obs-soft-zoom.plugin` to:
 `~/Library/Application Support/obs-studio/plugins/`
 
 Restart OBS.
+
+Package a release artifact:
+
+```bash
+chmod +x scripts/release-macos.sh
+./scripts/release-macos.sh
+```
+
+Output goes to `dist/`. Tag `v0.1.0` (match `buildspec.json` `version`) and attach the zip with `gh release create`.
 
 ## Use
 
