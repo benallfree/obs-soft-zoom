@@ -25,8 +25,9 @@ struct soft_zoom_filter {
 	float anim_to;
 	float anim_elapsed;
 
-	float center_x;
-	float center_y;
+	float anchor_x;
+	float anchor_y;
+	bool center_fallback;
 
 	struct vec2 mul_val;
 	struct vec2 add_val;
@@ -88,8 +89,15 @@ static void compute_crop(struct soft_zoom_filter *f, float zoom)
 	const float crop_w = 1.f / zoom;
 	const float crop_h = 1.f / zoom;
 
-	float left = f->center_x - crop_w * 0.5f;
-	float top = f->center_y - crop_h * 0.5f;
+	float left;
+	float top;
+	if (f->center_fallback) {
+		left = 0.5f - crop_w * 0.5f;
+		top = 0.5f - crop_h * 0.5f;
+	} else {
+		left = f->anchor_x;
+		top = f->anchor_y;
+	}
 
 	if (left < 0.f)
 		left = 0.f;
@@ -161,14 +169,15 @@ static void lock_center(struct soft_zoom_filter *f, obs_source_t *parent)
 	float cx = 0.5f;
 	float cy = 0.5f;
 
+	f->center_fallback = false;
 	zoom_cursor_normalized_on_display(display_id, &cx, &cy, &on_display);
 	if (!on_display || !is_display_capture(parent)) {
-		cx = 0.5f;
-		cy = 0.5f;
+		f->center_fallback = true;
+		return;
 	}
 
-	f->center_x = cx;
-	f->center_y = cy;
+	f->anchor_x = cx;
+	f->anchor_y = cy;
 }
 
 static void start_anim(struct soft_zoom_filter *f, float to)
@@ -212,8 +221,9 @@ static void *soft_zoom_create(obs_data_t *settings, obs_source_t *context)
 	f->context = context;
 	f->toggle_hotkey = OBS_INVALID_HOTKEY_ID;
 	f->zoom_current = 1.f;
-	f->center_x = 0.5f;
-	f->center_y = 0.5f;
+	f->anchor_x = 0.f;
+	f->anchor_y = 0.f;
+	f->center_fallback = false;
 
 	obs_enter_graphics();
 	f->effect = gs_effect_create_from_file(effect_path, NULL);
@@ -237,7 +247,6 @@ static void soft_zoom_destroy(void *data)
 {
 	struct soft_zoom_filter *f = data;
 
-	zoom_outline_hide();
 	zoom_outline_shutdown();
 
 	if (f->toggle_hotkey != OBS_INVALID_HOTKEY_ID)
@@ -321,8 +330,7 @@ static void soft_zoom_tick(void *data, float seconds)
 
 		if (!f->animating && f->zoom_current <= 1.001f) {
 			f->zoom_current = 1.f;
-			f->center_x = 0.5f;
-			f->center_y = 0.5f;
+			f->center_fallback = false;
 		}
 	}
 

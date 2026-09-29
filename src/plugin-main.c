@@ -10,6 +10,7 @@ the Free Software Foundation; either version 2 of the License, or
 
 #include <obs-module.h>
 #include <plugin-support.h>
+#include "zoom-outline.h"
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-soft-zoom", "en-US")
@@ -25,5 +26,6 @@ bool obs_module_load(void)
 
 void obs_module_unload(void)
 {
+	zoom_outline_shutdown();
 	obs_log(LOG_INFO, "unloaded");
 }

@@ -78,12 +78,16 @@ void zoom_cursor_normalized_on_display(uint32_t display_id, float *out_x, float 
 		return;
 
 	NSPoint p = [NSEvent mouseLocation];
-	if (p.x < frame.x || p.x >= frame.x + frame.w || p.y < frame.y || p.y >= frame.y + frame.h) {
+	const CGFloat right = frame.x + frame.w;
+	const CGFloat top = frame.y + frame.h;
+	if (p.x < frame.x || p.x > right || p.y < frame.y || p.y > top) {
 		return;
 	}
 
-	*out_x = (float)((p.x - frame.x) / frame.w);
-	*out_y = (float)(1.0 - (p.y - frame.y) / frame.h);
+	const double nx = (p.x - frame.x) / frame.w;
+	const double ny = 1.0 - (p.y - frame.y) / frame.h;
+	*out_x = (float)(nx < 0.0 ? 0.0 : (nx > 1.0 ? 1.0 : nx));
+	*out_y = (float)(ny < 0.0 ? 0.0 : (ny > 1.0 ? 1.0 : ny));
 	if (on_display)
 		*on_display = true;
 }
@@ -152,17 +156,20 @@ static void zoom_outline_apply_on_main(const zoom_outline_params *params, bool s
 
 	if (!g_panel) {
 		g_panel = [[NSPanel alloc] initWithContentRect:NSZeroRect
-						     styleMask:NSWindowStyleMaskBorderless
+						     styleMask:NSWindowStyleMaskBorderless |
+							     NSWindowStyleMaskNonactivatingPanel
 						       backing:NSBackingStoreBuffered
 							 defer:NO];
-		g_panel.level = NSFloatingWindowLevel;
+		// Above normal app windows while OBS is in the background (not NSFloatingWindowLevel).
+		g_panel.level = NSScreenSaverWindowLevel + 1;
 		g_panel.collectionBehavior =
 			NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary |
-			NSWindowCollectionBehaviorStationary;
+			NSWindowCollectionBehaviorStationary | NSWindowCollectionBehaviorIgnoresCycle;
 		g_panel.backgroundColor = NSColor.clearColor;
 		g_panel.opaque = NO;
 		g_panel.hasShadow = NO;
 		g_panel.ignoresMouseEvents = YES;
+		g_panel.hidesOnDeactivate = NO;
 		g_view = [[ZoomOutlineView alloc] initWithFrame:NSZeroRect];
 		g_panel.contentView = g_view;
 	}
@@ -181,6 +188,8 @@ static void zoom_outline_apply_on_main(const zoom_outline_params *params, bool s
 	[g_view setNeedsDisplay:YES];
 
 	[g_panel orderFrontRegardless];
+	// Reassert stacking after other apps take focus (orderFrontRegardless alone can lose to full-screen apps).
+	[g_panel setLevel:NSScreenSaverWindowLevel + 1];
 }
 
 static void dispatch_outline(const zoom_outline_params *params, bool show)
@@ -201,8 +210,23 @@ void zoom_outline_update(const zoom_outline_params *params)
 	dispatch_outline(params, true);
 }
 
+static void close_panel_on_main(void)
+{
+	if (!g_panel)
+		return;
+	[g_panel orderOut:nil];
+	[g_panel close];
+	g_panel = nil;
+	g_view = nil;
+}
+
 void zoom_outline_hide(void)
 {
+	if ([NSThread isMainThread]) {
+		if (g_panel)
+			[g_panel orderOut:nil];
+		return;
+	}
 	dispatch_async(dispatch_get_main_queue(), ^{
 		if (g_panel)
 			[g_panel orderOut:nil];
@@ -211,11 +235,13 @@ void zoom_outline_hide(void)
 
 void zoom_outline_shutdown(void)
 {
-	dispatch_sync(dispatch_get_main_queue(), ^{
-		if (g_panel) {
-			[g_panel close];
-			g_panel = nil;
-			g_view = nil;
-		}
-	});
+	// Never dispatch_sync to main from OBS filter destroy: quit often blocks the main
+	// thread until destroy returns, which deadlocks if we wait on the main queue.
+	if ([NSThread isMainThread]) {
+		close_panel_on_main();
+	} else {
+		dispatch_async(dispatch_get_main_queue(), ^{
+			close_panel_on_main();
+		});
+	}
 }
