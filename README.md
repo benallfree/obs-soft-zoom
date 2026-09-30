@@ -6,6 +6,8 @@ macOS OBS filter for display captures: hotkey zoom locked to the cursor, optiona
 
 **Version:** 0.1.0 (OBS Studio 31.1.x, macOS 12+, universal). See [CHANGELOG.md](CHANGELOG.md).
 
+**Walkthrough:** [https://youtu.be/fWRiG7zi914](https://youtu.be/fWRiG7zi914)
+
 ## Install
 
 ### From a release
@@ -14,18 +16,22 @@ Download the latest `obs-soft-zoom-*-macos-universal.zip` from [GitHub Releases]
 
 ### Build locally
 
-Build with CMake (see [obs-plugintemplate](https://github.com/obsproject/obs-plugintemplate) docs):
+Build, install into OBS, and reload (recommended):
+
+```bash
+./scripts/build-and-install-macos.sh
+```
+
+Then fully quit and reopen OBS.
+
+Manual build only (see [obs-plugintemplate](https://github.com/obsproject/obs-plugintemplate) docs):
 
 ```bash
 cmake --preset macos
 cmake --build build_macos --config RelWithDebInfo
+cp -R build_macos/rundir/RelWithDebInfo/obs-soft-zoom.plugin \
+  ~/Library/Application\ Support/obs-studio/plugins/
 ```
-
-Copy `build_macos/rundir/RelWithDebInfo/obs-soft-zoom.plugin` to:
-
-`~/Library/Application Support/obs-studio/plugins/`
-
-Restart OBS.
 
 Package a release artifact:
 
@@ -55,3 +61,5 @@ Turn on **Hide OBS from capture** on the screen capture if the overlay appears i
 Edit Soft Zoom on any capture to change globals for every instance. One hotkey master-toggles zoom on every filter: if any capture is zoomed, all zoom out; otherwise all zoom in.
 
 If several full-screen captures are stacked in one scene, only the topmost visible source is what you see in the preview. Hide or move layers above a capture if you need to see its zoom in the canvas.
+
+Zoom uses the filter input after Crop/Pad: at 2× you see half the width and half the height of that image, centered on the cursor (clamped inside the crop). The yellow outline is the same sample window on the monitor. With several captures on a scene, select the source that should drive the outline, or rely on the sole visible capture when only one is shown.

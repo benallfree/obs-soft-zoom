@@ -36,7 +36,8 @@ endif()
 
 target_sources(
   ${CMAKE_PROJECT_NAME}
-  PRIVATE src/plugin-main.c src/soft-zoom-filter.c src/soft-zoom-settings.c src/zoom-outline.m src/zoom-outline.h
+  PRIVATE src/plugin-main.c src/soft-zoom-filter.c src/soft-zoom-settings.c src/soft-zoom-spotlight.c
+          src/zoom-outline.m src/zoom-outline.h
 )
 
 if(OS_MACOS)

@@ -33,6 +33,9 @@ struct soft_zoom_filter {
 	struct vec2 mul_val;
 	struct vec2 add_val;
 
+	struct vec2 overlay_mul;
+	struct vec2 overlay_add;
+
 	bool overlay_shown;
 };
 

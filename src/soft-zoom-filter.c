@@ -1,7 +1,10 @@
 #include <obs-module.h>
 #include <util/platform.h>
+#include <math.h>
+#include <plugin-support.h>
 #include "soft-zoom-filter-internal.h"
 #include "soft-zoom-settings.h"
+#include "soft-zoom-spotlight.h"
 #include "zoom-outline.h"
 
 static bool soft_zoom_settings_modified(obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
@@ -74,6 +77,194 @@ static float smoothstep(float t)
 	return t * t * (3.f - 2.f * t);
 }
 
+static struct {
+	obs_source_t *parent;
+	float uv_crop;
+	float uv_left;
+	float uv_top;
+	float overlay_w;
+	float overlay_h;
+	float overlay_left;
+	float overlay_top;
+	struct vec2 src_mul;
+	struct vec2 src_add;
+} g_last_crop_log;
+
+static void log_compute_crop_if_changed(obs_source_t *parent, float zoom, const struct vec2 *src_mul,
+					const struct vec2 *src_add, float uv_crop, float uv_left, float uv_top,
+					float overlay_w, float overlay_h, float overlay_left, float overlay_top)
+{
+	if (g_last_crop_log.parent == parent && g_last_crop_log.uv_crop == uv_crop && g_last_crop_log.uv_left == uv_left &&
+	    g_last_crop_log.uv_top == uv_top && g_last_crop_log.overlay_w == overlay_w &&
+	    g_last_crop_log.overlay_h == overlay_h && g_last_crop_log.overlay_left == overlay_left &&
+	    g_last_crop_log.overlay_top == overlay_top && g_last_crop_log.src_mul.x == src_mul->x &&
+	    g_last_crop_log.src_mul.y == src_mul->y && g_last_crop_log.src_add.x == src_add->x &&
+	    g_last_crop_log.src_add.y == src_add->y)
+		return;
+
+	g_last_crop_log.parent = parent;
+	g_last_crop_log.uv_crop = uv_crop;
+	g_last_crop_log.uv_left = uv_left;
+	g_last_crop_log.uv_top = uv_top;
+	g_last_crop_log.overlay_w = overlay_w;
+	g_last_crop_log.overlay_h = overlay_h;
+	g_last_crop_log.overlay_left = overlay_left;
+	g_last_crop_log.overlay_top = overlay_top;
+	g_last_crop_log.src_mul = *src_mul;
+	g_last_crop_log.src_add = *src_add;
+
+	const char *parent_name = parent ? obs_source_get_name(parent) : "(no parent)";
+	obs_log(LOG_INFO,
+		"soft zoom crop parent=%s zoom=%.2f uv=%.4f at=%.4f,%.4f overlay=%.4fx%.4f at=%.4f,%.4f src_mul=%.4fx%.4f add=%.4f,%.4f",
+		parent_name, zoom, uv_crop, uv_left, uv_top, overlay_w, overlay_h, overlay_left, overlay_top, src_mul->x,
+		src_mul->y, src_add->x, src_add->y);
+}
+
+static bool soft_zoom_input_crop_map(obs_source_t *filter, struct vec2 *src_mul, struct vec2 *src_add)
+{
+	src_mul->x = 1.f;
+	src_mul->y = 1.f;
+	src_add->x = 0.f;
+	src_add->y = 0.f;
+
+	if (!filter)
+		return false;
+
+	obs_source_t *target = obs_filter_get_target(filter);
+	if (!target)
+		return false;
+
+	const char *id = obs_source_get_id(target);
+	if (!id || strcmp(id, "crop_filter"))
+		return false;
+
+	obs_source_t *base = obs_filter_get_target(target);
+	if (!base)
+		return false;
+
+	const uint32_t width = obs_source_get_base_width(base);
+	const uint32_t height = obs_source_get_base_height(base);
+	if (!width || !height)
+		return false;
+
+	obs_data_t *settings = obs_source_get_settings(target);
+	if (!settings)
+		return false;
+
+	const bool absolute = !obs_data_get_bool(settings, "relative");
+	const int left = (int)obs_data_get_int(settings, "left");
+	const int top = (int)obs_data_get_int(settings, "top");
+	const int right = (int)obs_data_get_int(settings, "right");
+	const int bottom = (int)obs_data_get_int(settings, "bottom");
+	const int abs_cx = (int)obs_data_get_int(settings, "cx");
+	const int abs_cy = (int)obs_data_get_int(settings, "cy");
+	obs_data_release(settings);
+
+	int crop_w;
+	int crop_h;
+
+	if (absolute) {
+		crop_w = abs_cx;
+		crop_h = abs_cy;
+	} else {
+		crop_w = (int)width - left - right;
+		crop_h = (int)height - top - bottom;
+	}
+
+	if (crop_w < 1)
+		crop_w = 1;
+	if (crop_h < 1)
+		crop_h = 1;
+
+	src_mul->x = (float)crop_w / (float)width;
+	src_mul->y = (float)crop_h / (float)height;
+	src_add->x = (float)left / (float)width;
+	src_add->y = (float)top / (float)height;
+	return true;
+}
+
+static float clamp01(float v)
+{
+	if (v < 0.f)
+		return 0.f;
+	if (v > 1.f)
+		return 1.f;
+	return v;
+}
+
+static void display_norm_to_texture(float dx, float dy, const struct vec2 *src_mul, const struct vec2 *src_add,
+				    float *tx, float *ty)
+{
+	if (src_mul->x > 0.0001f)
+		*tx = (dx - src_add->x) / src_mul->x;
+	else
+		*tx = dx;
+
+	if (src_mul->y > 0.0001f)
+		*ty = (dy - src_add->y) / src_mul->y;
+	else
+		*ty = dy;
+
+	*tx = clamp01(*tx);
+	*ty = clamp01(*ty);
+}
+
+static void texture_rect_to_display(float uv_left, float uv_top, float uv_w, float uv_h, const struct vec2 *src_mul,
+				    const struct vec2 *src_add, float *disp_left, float *disp_top, float *disp_w,
+				    float *disp_h)
+{
+	*disp_left = uv_left * src_mul->x + src_add->x;
+	*disp_top = uv_top * src_mul->y + src_add->y;
+	*disp_w = uv_w * src_mul->x;
+	*disp_h = uv_h * src_mul->y;
+}
+
+static void clamp_crop_rect(float crop_w, float crop_h, float *left, float *top)
+{
+	if (*left < 0.f)
+		*left = 0.f;
+	if (*top < 0.f)
+		*top = 0.f;
+	if (*left + crop_w > 1.f)
+		*left = 1.f - crop_w;
+	if (*top + crop_h > 1.f)
+		*top = 1.f - crop_h;
+}
+
+static void anchor_crop_origin(float crop_w, float crop_h, bool center_fallback, float anchor_x, float anchor_y,
+			       int anchor_mode, float *left, float *top)
+{
+	if (center_fallback) {
+		*left = 0.5f - crop_w * 0.5f;
+		*top = 0.5f - crop_h * 0.5f;
+		return;
+	}
+
+	switch (anchor_mode) {
+	case ANCHOR_UPPER_LEFT:
+		*left = anchor_x;
+		*top = anchor_y;
+		break;
+	case ANCHOR_UPPER_RIGHT:
+		*left = anchor_x - crop_w;
+		*top = anchor_y;
+		break;
+	case ANCHOR_LOWER_LEFT:
+		*left = anchor_x;
+		*top = anchor_y - crop_h;
+		break;
+	case ANCHOR_LOWER_RIGHT:
+		*left = anchor_x - crop_w;
+		*top = anchor_y - crop_h;
+		break;
+	case ANCHOR_CENTER:
+	default:
+		*left = anchor_x - crop_w * 0.5f;
+		*top = anchor_y - crop_h * 0.5f;
+		break;
+	}
+}
+
 static void compute_crop(struct soft_zoom_filter *f, float zoom)
 {
 	if (zoom <= 1.001f) {
@@ -81,63 +272,64 @@ static void compute_crop(struct soft_zoom_filter *f, float zoom)
 		f->mul_val.y = 1.f;
 		f->add_val.x = 0.f;
 		f->add_val.y = 0.f;
+		f->overlay_mul.x = 1.f;
+		f->overlay_mul.y = 1.f;
+		f->overlay_add.x = 0.f;
+		f->overlay_add.y = 0.f;
 		return;
 	}
 
-	const float crop_w = 1.f / zoom;
-	const float crop_h = 1.f / zoom;
+	const float uv_crop = 1.f / zoom;
 
-	float left;
-	float top;
+	struct vec2 src_mul;
+	struct vec2 src_add;
+	soft_zoom_input_crop_map(f->context, &src_mul, &src_add);
+
+	float anchor_tx;
+	float anchor_ty;
 	if (f->center_fallback) {
-		left = 0.5f - crop_w * 0.5f;
-		top = 0.5f - crop_h * 0.5f;
+		display_norm_to_texture(0.5f, 0.5f, &src_mul, &src_add, &anchor_tx, &anchor_ty);
 	} else {
-		const float px = f->anchor_x;
-		const float py = f->anchor_y;
-
-		switch (f->anchor_mode) {
-		case ANCHOR_UPPER_LEFT:
-			left = px;
-			top = py;
-			break;
-		case ANCHOR_UPPER_RIGHT:
-			left = px - crop_w;
-			top = py;
-			break;
-		case ANCHOR_LOWER_LEFT:
-			left = px;
-			top = py - crop_h;
-			break;
-		case ANCHOR_LOWER_RIGHT:
-			left = px - crop_w;
-			top = py - crop_h;
-			break;
-		case ANCHOR_CENTER:
-		default:
-			left = px - crop_w * 0.5f;
-			top = py - crop_h * 0.5f;
-			break;
-		}
+		display_norm_to_texture(f->anchor_x, f->anchor_y, &src_mul, &src_add, &anchor_tx, &anchor_ty);
 	}
 
-	if (left < 0.f)
-		left = 0.f;
-	if (top < 0.f)
-		top = 0.f;
-	if (left + crop_w > 1.f)
-		left = 1.f - crop_w;
-	if (top + crop_h > 1.f)
-		top = 1.f - crop_h;
+	float uv_left;
+	float uv_top;
+	anchor_crop_origin(uv_crop, uv_crop, false, anchor_tx, anchor_ty, f->anchor_mode, &uv_left, &uv_top);
+	clamp_crop_rect(uv_crop, uv_crop, &uv_left, &uv_top);
 
-	f->mul_val.x = crop_w;
-	f->mul_val.y = crop_h;
-	f->add_val.x = left;
-	f->add_val.y = top;
+	float overlay_left;
+	float overlay_top;
+	float overlay_w;
+	float overlay_h;
+	texture_rect_to_display(uv_left, uv_top, uv_crop, uv_crop, &src_mul, &src_add, &overlay_left, &overlay_top,
+				&overlay_w, &overlay_h);
+
+	f->overlay_mul.x = overlay_w;
+	f->overlay_mul.y = overlay_h;
+	f->overlay_add.x = overlay_left;
+	f->overlay_add.y = overlay_top;
+
+	f->mul_val.x = uv_crop;
+	f->mul_val.y = uv_crop;
+	f->add_val.x = uv_left;
+	f->add_val.y = uv_top;
+
+	log_compute_crop_if_changed(obs_filter_get_parent(f->context), zoom, &src_mul, &src_add, uv_crop, uv_left,
+				    uv_top, overlay_w, overlay_h, overlay_left, overlay_top);
 }
 
 void soft_zoom_filter_sync_overlay(struct soft_zoom_filter *f, obs_source_t *parent)
 {
+	obs_source_t *overlay_owner = NULL;
+	if (!soft_zoom_spotlight_overlay_owner(&overlay_owner) || parent != overlay_owner) {
+		if (f->overlay_shown) {
+			zoom_outline_hide();
+			f->overlay_shown = false;
+		}
+		return;
+	}
+
 	if (parent && !obs_source_showing(parent)) {
 		if (f->overlay_shown) {
 			zoom_outline_hide();
@@ -167,10 +359,10 @@ void soft_zoom_filter_sync_overlay(struct soft_zoom_filter *f, obs_source_t *par
 	if (!zoom_display_frame_for_id(display_id, &display))
 		return;
 
-	const float crop_w = f->mul_val.x;
-	const float crop_h = f->mul_val.y;
-	const float left = f->add_val.x;
-	const float top = f->add_val.y;
+	const float crop_w = f->overlay_mul.x;
+	const float crop_h = f->overlay_mul.y;
+	const float left = f->overlay_add.x;
+	const float top = f->overlay_add.y;
 
 	zoom_outline_params params = {0};
 	params.display_x = display.x;
@@ -183,6 +375,28 @@ void soft_zoom_filter_sync_overlay(struct soft_zoom_filter *f, obs_source_t *par
 	params.region_h = crop_h;
 	params.outline_thickness = f->outline_thickness;
 	params.dim_opacity = f->dim_opacity;
+
+	static struct {
+		float region_w;
+		float region_h;
+		uint32_t display_w;
+		uint32_t display_h;
+	} g_last_overlay_log;
+
+	const bool overlay_changed = g_last_overlay_log.region_w != crop_w || g_last_overlay_log.region_h != crop_h ||
+				     g_last_overlay_log.display_w != (uint32_t)display.w ||
+				     g_last_overlay_log.display_h != (uint32_t)display.h;
+	if (overlay_changed) {
+		g_last_overlay_log.region_w = crop_w;
+		g_last_overlay_log.region_h = crop_h;
+		g_last_overlay_log.display_w = (uint32_t)display.w;
+		g_last_overlay_log.display_h = (uint32_t)display.h;
+		const char *parent_name = parent ? obs_source_get_name(parent) : "(no parent)";
+		obs_log(LOG_INFO,
+			"soft zoom overlay parent=%s display=%.0fx%.0f region_norm=%.4fx%.4f at=%.4f,%.4f physical_focus=%.0fx%.0f px",
+			parent_name, display.w, display.h, crop_w, crop_h, left, top, crop_w * display.w,
+			crop_h * display.h);
+	}
 
 	if (f->overlay_shown)
 		zoom_outline_update(&params);
@@ -433,12 +647,20 @@ static void soft_zoom_tick(void *data, float seconds)
 	if (f->zoom_active && f->follow_mouse && parent && obs_source_showing(parent))
 		refresh_anchor_from_cursor(f, parent);
 
+	if (f->zoom_active && f->zoom_current > 1.001f)
+		soft_zoom_spotlight_tick();
+
 	compute_crop(f, f->zoom_current);
 
 	if (parent) {
-		if (f->zoom_active && !f->animating && f->zoom_current > 1.001f)
-			soft_zoom_filter_sync_overlay(f, parent);
-		else if (f->overlay_shown) {
+		if (f->zoom_active && f->zoom_current > 1.001f) {
+			if (!f->animating)
+				soft_zoom_filter_sync_overlay(f, parent);
+			else if (f->overlay_shown) {
+				zoom_outline_hide();
+				f->overlay_shown = false;
+			}
+		} else if (f->overlay_shown) {
 			zoom_outline_hide();
 			f->overlay_shown = false;
 		}

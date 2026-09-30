@@ -6,6 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Crop-aware spotlight: zoom samples the filter input (after Crop/Pad). At N× zoom the sample is `1/N` of that image on each axis, centered on the cursor inside the crop. The yellow outline is the same window mapped onto the physical display.
+- Yellow outline follows the selected scene source (or the only visible screen capture when nothing is selected). Other zoomed captures still zoom their own input but do not drive the overlay.
+- [`scripts/build-and-install-macos.sh`](scripts/build-and-install-macos.sh) builds and copies the plugin into `~/Library/Application Support/obs-studio/plugins/`.
+- OBS log lines (`spotlight …`, `soft zoom crop …`, `soft zoom overlay …`) when crop or overlay state changes.
+
+### Fixed
+
+- Crop/Pad above Soft Zoom no longer treated the full monitor as 0–1 for the cursor and outline (box and zoom now stay on the cropped region).
+- Video zoom uses uniform UV crop so magnified pixels are not stretched.
+
+### Changed
+
+- Factory defaults: 4× zoom, 250 ms ease, 5 px outline, 50% dim, center anchor, follow mouse on.
+
 ## [0.1.0] - 2026-09-29
 
 First public release (macOS universal, OBS Studio 31.1.x).

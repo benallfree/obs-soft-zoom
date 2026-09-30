@@ -8,19 +8,19 @@
 #include <util/platform.h>
 
 static const struct soft_zoom_settings k_factory_defaults = {
-	.zoom_factor = 2,
+	.zoom_factor = 4,
 	.ease_ms = 250,
-	.outline_thickness = 0,
-	.dim_opacity = 0,
+	.outline_thickness = 5,
+	.dim_opacity = 50,
 	.anchor_mode = ANCHOR_CENTER,
 	.follow_mouse = true,
 };
 
 static struct soft_zoom_settings g_settings = {
-	.zoom_factor = 2,
+	.zoom_factor = 4,
 	.ease_ms = 250,
-	.outline_thickness = 0,
-	.dim_opacity = 0,
+	.outline_thickness = 5,
+	.dim_opacity = 50,
 	.anchor_mode = ANCHOR_CENTER,
 	.follow_mouse = true,
 };

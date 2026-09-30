@@ -14,6 +14,7 @@ the Free Software Foundation; either version 2 of the License, or
 #include <plugin-support.h>
 #include "soft-zoom-filter-internal.h"
 #include "soft-zoom-settings.h"
+#include "soft-zoom-spotlight.h"
 #include "zoom-outline.h"
 
 OBS_DECLARE_MODULE()
@@ -79,6 +80,11 @@ static void on_frontend_event(enum obs_frontend_event event, void *unused)
 	case OBS_FRONTEND_EVENT_PROFILE_CHANGED:
 		ensure_toggle_hotkey_registered();
 		load_toggle_hotkey_bindings();
+		soft_zoom_spotlight_rehook_scene();
+		break;
+	case OBS_FRONTEND_EVENT_SCENE_CHANGED:
+	case OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED:
+		soft_zoom_spotlight_rehook_scene();
 		break;
 	default:
 		break;
@@ -92,6 +98,7 @@ bool obs_module_load(void)
 	obs_register_source(&soft_zoom_filter);
 	ensure_toggle_hotkey_registered();
 	obs_frontend_add_event_callback(on_frontend_event, NULL);
+	soft_zoom_spotlight_init();
 	obs_log(LOG_INFO, "loaded (version %s)", PLUGIN_VERSION);
 	return true;
 }
@@ -99,6 +106,7 @@ bool obs_module_load(void)
 void obs_module_unload(void)
 {
 	obs_frontend_remove_event_callback(on_frontend_event, NULL);
+	soft_zoom_spotlight_shutdown();
 	soft_zoom_settings_save();
 	zoom_outline_shutdown();
 	obs_log(LOG_INFO, "unloaded");
