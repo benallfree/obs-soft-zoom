@@ -19,6 +19,20 @@ static void bind_settings_modified(obs_property_t *property)
 		obs_property_set_modified_callback(property, soft_zoom_settings_modified);
 }
 
+static bool reset_globals_clicked(obs_properties_t *props, obs_property_t *property, void *unused)
+{
+	UNUSED_PARAMETER(property);
+	UNUSED_PARAMETER(unused);
+
+	soft_zoom_settings_reset_to_factory();
+
+	obs_data_t *settings = obs_data_create();
+	soft_zoom_settings_fill_obs_data(settings);
+	obs_properties_apply_settings(props, settings);
+	obs_data_release(settings);
+	return true;
+}
+
 static const char *soft_zoom_name(void *unused)
 {
 	UNUSED_PARAMETER(unused);
@@ -132,7 +146,7 @@ void soft_zoom_filter_sync_overlay(struct soft_zoom_filter *f, obs_source_t *par
 		return;
 	}
 
-	if (!f->zoom_active || f->zoom_current <= 1.001f || f->animating) {
+	if (!f->zoom_active || f->animating || f->zoom_current <= 1.001f) {
 		if (f->overlay_shown) {
 			zoom_outline_hide();
 			f->overlay_shown = false;
@@ -378,6 +392,9 @@ static obs_properties_t *soft_zoom_properties(void *unused)
 		obs_properties_add_bool(props, "follow_mouse", obs_module_text("SoftZoom.FollowMouse"));
 	bind_settings_modified(follow);
 
+	obs_properties_add_button2(props, "reset_globals", obs_module_text("SoftZoom.ResetGlobals"),
+				   reset_globals_clicked, NULL);
+
 	obs_data_t *display = obs_data_create();
 	soft_zoom_settings_fill_obs_data(display);
 	obs_properties_apply_settings(props, display);
@@ -419,9 +436,9 @@ static void soft_zoom_tick(void *data, float seconds)
 	compute_crop(f, f->zoom_current);
 
 	if (parent) {
-		if (f->zoom_active && !f->animating)
+		if (f->zoom_active && !f->animating && f->zoom_current > 1.001f)
 			soft_zoom_filter_sync_overlay(f, parent);
-		else if (!f->zoom_active && !f->animating && f->overlay_shown) {
+		else if (f->overlay_shown) {
 			zoom_outline_hide();
 			f->overlay_shown = false;
 		}

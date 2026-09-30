@@ -16,6 +16,7 @@
 !LICENSE
 !README.md
 !RELEASE.md
+!CHANGELOG.md
 
 # Exclude lock files
 *.lock.json

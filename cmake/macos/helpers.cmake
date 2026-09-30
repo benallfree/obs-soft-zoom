@@ -55,7 +55,10 @@ function(set_target_properties_plugin target)
     COMMAND
       "${CMAKE_COMMAND}" -E copy_directory "$<TARGET_BUNDLE_DIR:${target}>"
       "${CMAKE_CURRENT_BINARY_DIR}/rundir/$<CONFIG>/$<TARGET_BUNDLE_DIR_NAME:${target}>"
-    COMMENT "Copy ${target} to rundir"
+    COMMAND
+      /usr/bin/codesign --force --deep --sign -
+      "${CMAKE_CURRENT_BINARY_DIR}/rundir/$<CONFIG>/$<TARGET_BUNDLE_DIR_NAME:${target}>"
+    COMMENT "Copy ${target} to rundir and ad-hoc sign"
     VERBATIM
   )
 

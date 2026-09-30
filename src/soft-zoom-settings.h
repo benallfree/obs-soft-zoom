@@ -27,6 +27,7 @@ void soft_zoom_settings_set_from_obs_data(obs_data_t *settings);
 void soft_zoom_settings_fill_obs_data(obs_data_t *settings);
 bool soft_zoom_settings_commit_obs_data(obs_data_t *settings);
 void soft_zoom_settings_set_defaults(obs_data_t *settings);
+void soft_zoom_settings_reset_to_factory(void);
 
 void soft_zoom_settings_register(struct soft_zoom_filter *f);
 void soft_zoom_settings_unregister(struct soft_zoom_filter *f);

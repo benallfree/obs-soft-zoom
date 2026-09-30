@@ -19,6 +19,8 @@ macOS-only filter for **Screen Capture** sources: global zoom settings, one **Se
 4. Add **Soft Zoom** as a filter on each Screen Capture you want.
 5. Bind **Soft Zoom toggle** under **Settings → Hotkeys**.
 
+Outline and dim stay on your display. The yellow frame is hidden until the zoom ease finishes, then follows the cursor as a single box. **Reset all to defaults** restores factory settings for every Soft Zoom filter.
+
 See [README.md](README.md) for usage.
 
 ## Build from source

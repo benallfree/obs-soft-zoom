@@ -2,7 +2,7 @@
 
 macOS OBS filter for display captures: hotkey zoom locked to the cursor, optional on-screen outline and dim (not in the stream).
 
-**Version:** 0.1.0 (OBS Studio 31.1.x, macOS 12+, universal)
+**Version:** 0.1.0 (OBS Studio 31.1.x, macOS 12+, universal). See [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
@@ -37,7 +37,7 @@ Output goes to `dist/`. Tag `v0.1.0` (match `buildspec.json` `version`) and atta
 ## Use
 
 1. Add **Soft Zoom** to each macOS **Screen Capture** source you want (Filters).
-2. Open Soft Zoom on any one of those sources and set zoom (2x / 4x / 8x), ease, outline, dim, anchor, and follow mouse. **These options are global.** They apply to every Soft Zoom filter and are saved in the plugin config, not per layer in the scene.
+2. Open Soft Zoom on any one of those sources and set zoom (2x / 4x / 8x), ease, outline, dim, anchor, and follow mouse. **These options are global.** They apply to every Soft Zoom filter and are saved in the plugin config, not per layer in the scene. Use **Reset all to defaults** to restore factory settings for every Soft Zoom instance.
 3. Bind **Soft Zoom toggle** once under **Settings → Hotkeys** (search `soft zoom`).
 4. Press the hotkey to zoom **all** captures that have Soft Zoom; press again to restore all.
 

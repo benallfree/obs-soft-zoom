@@ -105,9 +105,20 @@ void zoom_cursor_normalized_on_display(uint32_t display_id, float *out_x, float 
 	return YES;
 }
 
+- (BOOL)isOpaque
+{
+	return NO;
+}
+
 - (void)drawRect:(NSRect)dirtyRect
 {
 	(void)dirtyRect;
+
+	CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+	CGContextSaveGState(ctx);
+	CGContextSetBlendMode(ctx, kCGBlendModeCopy);
+	CGContextClearRect(ctx, NSRectToCGRect(self.bounds));
+	CGContextRestoreGState(ctx);
 
 	NSRect focus = self.focusRect;
 	if (focus.size.width <= 0 || focus.size.height <= 0)
@@ -143,6 +154,10 @@ void zoom_cursor_normalized_on_display(uint32_t display_id, float *out_x, float 
 
 static NSPanel *g_panel;
 static ZoomOutlineView *g_view;
+static zoom_outline_params g_pending;
+static bool g_pending_show;
+static bool g_update_queued;
+
 static void zoom_outline_apply_on_main(const zoom_outline_params *params, bool show)
 {
 	if (!show || (params->outline_thickness <= 0 && params->dim_opacity <= 0)) {
@@ -152,7 +167,28 @@ static void zoom_outline_apply_on_main(const zoom_outline_params *params, bool s
 		return;
 	}
 
-	NSRect screenFrame = NSMakeRect(params->display_x, params->display_y, params->display_w, params->display_h);
+	const CGFloat fw = params->display_w;
+	const CGFloat fh = params->display_h;
+	const CGFloat rx = params->region_x * fw;
+	const CGFloat ry = params->region_y * fh;
+	const CGFloat rw = params->region_w * fw;
+	const CGFloat rh = params->region_h * fh;
+	const CGFloat t = params->outline_thickness > 0 ? (CGFloat)params->outline_thickness : 0;
+	const bool dimmed = params->dim_opacity > 0;
+
+	NSRect panelFrame;
+	NSRect focus;
+	if (dimmed) {
+		panelFrame = NSMakeRect(params->display_x, params->display_y, fw, fh);
+		focus = NSMakeRect(rx, ry, rw, rh);
+	} else {
+		const CGFloat focusY = params->display_y + fh - (ry + rh);
+		panelFrame = NSMakeRect(params->display_x + rx - t, focusY - t, rw + 2 * t, rh + 2 * t);
+		focus = NSMakeRect(t, t, rw, rh);
+	}
+
+	if (panelFrame.size.width < 1 || panelFrame.size.height < 1)
+		return;
 
 	if (!g_panel) {
 		g_panel = [[NSPanel alloc] initWithContentRect:NSZeroRect
@@ -170,33 +206,45 @@ static void zoom_outline_apply_on_main(const zoom_outline_params *params, bool s
 		g_panel.hasShadow = NO;
 		g_panel.ignoresMouseEvents = YES;
 		g_panel.hidesOnDeactivate = NO;
+		if ([g_panel respondsToSelector:@selector(setSharingType:)])
+			g_panel.sharingType = NSWindowSharingNone;
 		g_view = [[ZoomOutlineView alloc] initWithFrame:NSZeroRect];
+		g_view.wantsLayer = YES;
+		g_view.layer.opaque = NO;
+		g_view.layer.backgroundColor = NSColor.clearColor.CGColor;
 		g_panel.contentView = g_view;
 	}
 
-	[g_panel setFrame:screenFrame display:YES];
-
-	const CGFloat fw = screenFrame.size.width;
-	const CGFloat fh = screenFrame.size.height;
-
-	g_view.frame = NSMakeRect(0, 0, fw, fh);
-	g_view.focusRect =
-		NSMakeRect((CGFloat)params->region_x * fw, (CGFloat)params->region_y * fh, (CGFloat)params->region_w * fw,
-			   (CGFloat)params->region_h * fh);
+	[g_panel setFrame:panelFrame display:NO];
+	g_view.frame = NSMakeRect(0, 0, panelFrame.size.width, panelFrame.size.height);
+	g_view.focusRect = focus;
 	g_view.outlineThickness = params->outline_thickness;
 	g_view.dimOpacity = params->dim_opacity;
 	[g_view setNeedsDisplay:YES];
+	[g_view displayIfNeeded];
 
 	[g_panel orderFrontRegardless];
+	[g_panel displayIfNeeded];
 	// Reassert stacking after other apps take focus (orderFrontRegardless alone can lose to full-screen apps).
 	[g_panel setLevel:NSScreenSaverWindowLevel + 1];
 }
 
+static void flush_pending_outline(void)
+{
+	g_update_queued = false;
+	zoom_outline_apply_on_main(&g_pending, g_pending_show);
+}
+
 static void dispatch_outline(const zoom_outline_params *params, bool show)
 {
-	zoom_outline_params copy = *params;
+	g_pending = *params;
+	g_pending_show = show;
+	if (g_update_queued)
+		return;
+
+	g_update_queued = true;
 	dispatch_async(dispatch_get_main_queue(), ^{
-		zoom_outline_apply_on_main(&copy, show);
+		flush_pending_outline();
 	});
 }
 

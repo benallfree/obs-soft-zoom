@@ -7,6 +7,15 @@
 #include <util/darray.h>
 #include <util/platform.h>
 
+static const struct soft_zoom_settings k_factory_defaults = {
+	.zoom_factor = 2,
+	.ease_ms = 250,
+	.outline_thickness = 0,
+	.dim_opacity = 0,
+	.anchor_mode = ANCHOR_CENTER,
+	.follow_mouse = true,
+};
+
 static struct soft_zoom_settings g_settings = {
 	.zoom_factor = 2,
 	.ease_ms = 250,
@@ -108,9 +117,29 @@ void soft_zoom_settings_fill_obs_data(obs_data_t *settings)
 	obs_data_set_bool(settings, "follow_mouse", g_settings.follow_mouse);
 }
 
+static void fill_obs_data_from_struct(obs_data_t *settings, const struct soft_zoom_settings *src)
+{
+	if (!settings || !src)
+		return;
+
+	obs_data_set_int(settings, "zoom", src->zoom_factor);
+	obs_data_set_int(settings, "ease_ms", src->ease_ms);
+	obs_data_set_int(settings, "outline", src->outline_thickness);
+	obs_data_set_int(settings, "dim", src->dim_opacity);
+	obs_data_set_int(settings, "anchor", src->anchor_mode);
+	obs_data_set_bool(settings, "follow_mouse", src->follow_mouse);
+}
+
 void soft_zoom_settings_set_defaults(obs_data_t *settings)
 {
-	soft_zoom_settings_fill_obs_data(settings);
+	fill_obs_data_from_struct(settings, &k_factory_defaults);
+}
+
+void soft_zoom_settings_reset_to_factory(void)
+{
+	g_settings = k_factory_defaults;
+	soft_zoom_settings_save();
+	soft_zoom_settings_apply_all();
 }
 
 bool soft_zoom_settings_commit_obs_data(obs_data_t *settings)

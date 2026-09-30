@@ -87,6 +87,7 @@ static void on_frontend_event(enum obs_frontend_event event, void *unused)
 
 bool obs_module_load(void)
 {
+	zoom_outline_shutdown();
 	soft_zoom_settings_load();
 	obs_register_source(&soft_zoom_filter);
 	ensure_toggle_hotkey_registered();
