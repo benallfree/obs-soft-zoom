@@ -1,5 +1,7 @@
 # OBS Soft Zoom
 
+![Soft Zoom: the monitor shows a yellow frame around the detail, and OBS shows that region zoomed](docs/images/banner.jpg)
+
 macOS OBS filter for display captures: hotkey zoom locked to the cursor, optional on-screen outline and dim (not in the stream).
 
 **Version:** 0.1.0 (OBS Studio 31.1.x, macOS 12+, universal). See [CHANGELOG.md](CHANGELOG.md).
