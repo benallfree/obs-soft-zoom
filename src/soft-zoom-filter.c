@@ -4,11 +4,6 @@
 #include "soft-zoom-settings.h"
 #include "zoom-outline.h"
 
-static zoom_outline_owner_id overlay_owner_id(const struct soft_zoom_filter *f)
-{
-	return (zoom_outline_owner_id)(uintptr_t)f;
-}
-
 static bool soft_zoom_settings_modified(obs_properties_t *props, obs_property_t *property, obs_data_t *settings)
 {
 	UNUSED_PARAMETER(props);
@@ -131,7 +126,7 @@ void soft_zoom_filter_sync_overlay(struct soft_zoom_filter *f, obs_source_t *par
 {
 	if (parent && !obs_source_showing(parent)) {
 		if (f->overlay_shown) {
-			zoom_outline_hide_for(overlay_owner_id(f));
+			zoom_outline_hide();
 			f->overlay_shown = false;
 		}
 		return;
@@ -139,7 +134,7 @@ void soft_zoom_filter_sync_overlay(struct soft_zoom_filter *f, obs_source_t *par
 
 	if (!f->zoom_active || f->zoom_current <= 1.001f || f->animating) {
 		if (f->overlay_shown) {
-			zoom_outline_hide_for(overlay_owner_id(f));
+			zoom_outline_hide();
 			f->overlay_shown = false;
 		}
 		return;
@@ -147,7 +142,7 @@ void soft_zoom_filter_sync_overlay(struct soft_zoom_filter *f, obs_source_t *par
 
 	if (f->outline_thickness <= 0 && f->dim_opacity <= 0) {
 		if (f->overlay_shown) {
-			zoom_outline_hide_for(overlay_owner_id(f));
+			zoom_outline_hide();
 			f->overlay_shown = false;
 		}
 		return;
@@ -175,11 +170,10 @@ void soft_zoom_filter_sync_overlay(struct soft_zoom_filter *f, obs_source_t *par
 	params.outline_thickness = f->outline_thickness;
 	params.dim_opacity = f->dim_opacity;
 
-	const zoom_outline_owner_id owner = overlay_owner_id(f);
 	if (f->overlay_shown)
-		zoom_outline_update_for(owner, &params);
+		zoom_outline_update(&params);
 	else {
-		zoom_outline_show_for(owner, &params);
+		zoom_outline_show(&params);
 		f->overlay_shown = true;
 	}
 }
@@ -256,8 +250,10 @@ void soft_zoom_filter_set_active(struct soft_zoom_filter *f, bool active)
 		return;
 
 	f->zoom_active = false;
-	zoom_outline_hide_for(overlay_owner_id(f));
-	f->overlay_shown = false;
+	if (f->overlay_shown) {
+		zoom_outline_hide();
+		f->overlay_shown = false;
+	}
 	start_anim(f, 1.f);
 }
 
@@ -318,7 +314,8 @@ static void soft_zoom_destroy(void *data)
 	struct soft_zoom_filter *f = data;
 
 	soft_zoom_settings_unregister(f);
-	zoom_outline_destroy_for(overlay_owner_id(f));
+	if (f->overlay_shown)
+		zoom_outline_hide();
 
 	obs_enter_graphics();
 	gs_effect_destroy(f->effect);
@@ -425,7 +422,7 @@ static void soft_zoom_tick(void *data, float seconds)
 		if (f->zoom_active && !f->animating)
 			soft_zoom_filter_sync_overlay(f, parent);
 		else if (!f->zoom_active && !f->animating && f->overlay_shown) {
-			zoom_outline_hide_for(overlay_owner_id(f));
+			zoom_outline_hide();
 			f->overlay_shown = false;
 		}
 	}

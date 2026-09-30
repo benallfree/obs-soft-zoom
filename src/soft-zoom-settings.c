@@ -10,7 +10,7 @@
 static struct soft_zoom_settings g_settings = {
 	.zoom_factor = 2,
 	.ease_ms = 250,
-	.outline_thickness = 3,
+	.outline_thickness = 0,
 	.dim_opacity = 0,
 	.anchor_mode = ANCHOR_CENTER,
 	.follow_mouse = true,
