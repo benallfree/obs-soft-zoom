@@ -1,5 +1,5 @@
 /*
-OBS Soft Zoom
+Soft Zoom
 Copyright (C) 2026 Ben Allfree
 
 This program is free software; you can redistribute it and/or modify

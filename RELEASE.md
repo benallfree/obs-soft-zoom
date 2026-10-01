@@ -1,4 +1,4 @@
-# OBS Soft Zoom 0.1.0
+# Soft Zoom 0.1.0
 
 macOS-only filter for **Screen Capture** sources: global zoom settings, one **Settings → Hotkeys** toggle for all instances, optional on-screen outline and dim (not in the stream).
 

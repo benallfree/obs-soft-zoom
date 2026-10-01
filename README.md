@@ -1,8 +1,8 @@
-# OBS Soft Zoom
+# Soft Zoom
 
 ![Soft Zoom: the monitor shows a yellow frame around the detail, and OBS shows that region zoomed](docs/images/banner.jpg)
 
-macOS OBS filter for display captures: hotkey zoom locked to the cursor, optional on-screen outline and dim (not in the stream).
+Third-party macOS screen-capture filter for OBS Studio: hotkey zoom locked to the cursor, optional on-screen outline and dim (not in the stream).
 
 **Version:** 0.1.0 (OBS Studio 31.1.x, macOS 12+, universal). See [CHANGELOG.md](CHANGELOG.md).
 
@@ -12,7 +12,7 @@ macOS OBS filter for display captures: hotkey zoom locked to the cursor, optiona
 
 ### From a release
 
-Download the latest `obs-soft-zoom-*-macos-universal.zip` from [GitHub Releases](https://github.com/benallfree/obs-soft-zoom/releases), unzip `obs-soft-zoom.plugin` into `~/Library/Application Support/obs-studio/plugins/`, and restart OBS.
+Download the latest `obs-soft-zoom-*-macos-universal.zip` from [GitHub Releases](https://github.com/benallfree/soft-zoom/releases), unzip `obs-soft-zoom.plugin` into `~/Library/Application Support/obs-studio/plugins/`, and restart OBS.
 
 ### Build locally
 
@@ -63,3 +63,9 @@ Edit Soft Zoom on any capture to change globals for every instance. One hotkey m
 If several full-screen captures are stacked in one scene, only the topmost visible source is what you see in the preview. Hide or move layers above a capture if you need to see its zoom in the canvas.
 
 Zoom uses the filter input after Crop/Pad: at 2× you see half the width and half the height of that image, centered on the cursor (clamped inside the crop). The yellow outline is the same sample window on the monitor. With several captures on a scene, select the source that should drive the outline, or rely on the sole visible capture when only one is shown.
+
+## Disclaimer
+
+Soft Zoom is an independent third-party plugin. It is not developed by, affiliated with, or endorsed by the OBS Project or OBS Studio.
+
+Source is available under GPL-2.0-or-later. See [LICENSE](LICENSE).

@@ -20,6 +20,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Public README and `displayName` are **Soft Zoom** (same as the in-app filter name). The macOS bundle stays `obs-soft-zoom.plugin`.
 - Factory defaults: 4× zoom, 250 ms ease, 5 px outline, 50% dim, center anchor, follow mouse on.
 
 ## [0.1.0] - 2026-09-29
@@ -54,5 +55,5 @@ First public release (macOS universal, OBS Studio 31.1.x).
 
 - GitHub Actions / obs-plugintemplate CI (build and release on your Mac only).
 
-[Unreleased]: https://github.com/benallfree/obs-soft-zoom/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/benallfree/obs-soft-zoom/releases/tag/v0.1.0
+[Unreleased]: https://github.com/benallfree/soft-zoom/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/benallfree/soft-zoom/releases/tag/v0.1.0

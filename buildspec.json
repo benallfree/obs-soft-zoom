@@ -37,9 +37,9 @@
         }
     },
     "name": "obs-soft-zoom",
-    "displayName": "OBS Soft Zoom",
+    "displayName": "Soft Zoom",
     "version": "0.1.0",
     "author": "Ben Allfree",
-    "website": "https://github.com/benallfree/obs-soft-zoom",
+    "website": "https://github.com/benallfree/soft-zoom",
     "email": "ben@allfree.com"
 }
